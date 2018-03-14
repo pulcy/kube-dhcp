@@ -1,6 +1,6 @@
 # Kube-DHCP; DHCP4 server running in Kubernetes
 
-Status: Development
+Status: Early Development
 
 ## Building
 
@@ -12,4 +12,12 @@ docker build -t kube-dhcp .
 
 ```bash
 kubectl apply -f deployment.yaml
+```
+
+## Configuration
+
+Edit configuration file (e.g. example-config.yaml) and deploy it.
+
+```bash
+kubectl apply -f example-config.yaml
 ```
