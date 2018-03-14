@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  namespace: dhcp-system
+  name: kube-dhcp-config
+data:
+  config: |
+    # The peers section tells MetalLB what BGP routers to connect too. There
+    # is one entry for each router you want to peer with.
+    server-ip: 192.168.10.2
+    ranges:
+    - start: 192.168.10.20
+      length: 10
+    options:
+      dns-ip: 192.168.10.2
+      router-ip: 192.168.10.1
+      subnet-mask: 255.255.255.0
