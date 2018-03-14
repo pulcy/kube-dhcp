@@ -5,7 +5,7 @@ Status: Early Development
 ## Building
 
 ```bash
-docker build -t kube-dhcp .
+docker build -f Dockerfile.build -t kube-dhcp .
 ```
 
 ## Installation

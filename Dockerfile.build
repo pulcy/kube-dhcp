@@ -1,17 +1,21 @@
 # Build stage
 FROM golang:1.10.0-alpine AS build-env
+
+ARG GOARCH=amd64
 ENV GOPATH /usr/code
 ENV CGO_ENABLED 0
+
 WORKDIR /usr/code
 COPY vendor/github.com /usr/code/src/github.com/
 COPY vendor/golang.org /usr/code/src/golang.org/
 COPY vendor/gopkg.in /usr/code/src/gopkg.in/
 ADD . /usr/code
-RUN go build -installsuffix cgo -o kube-dhcp
+RUN GOARCH=${GOARCH} go build -installsuffix cgo -o kube-dhcp-${GOARCH}
 RUN ls -al
 
 # final stage
 FROM scratch
+ARG GOARCH=amd64
 WORKDIR /app
-COPY --from=build-env /usr/code/kube-dhcp /app/
+COPY --from=build-env /usr/code/kube-dhcp-${GOARCH} /app/kube-dhcp
 ENTRYPOINT [ "/app/kube-dhcp" ]

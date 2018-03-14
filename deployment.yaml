@@ -21,7 +21,7 @@ spec:
       containers:
       - name: server
         imagePullPolicy: IfNotPresent
-        image: kube-dhcp
+        image: pulcy/kube-dhcp
         env:
         - name: METADATA_NAMESPACE
           valueFrom:

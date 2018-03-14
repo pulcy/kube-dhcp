@@ -1,0 +1,7 @@
+{
+    "registry": "pulcy",
+    "image": "kube-dhcp",
+    "targets": {
+        "release": "release"
+    }
+}
