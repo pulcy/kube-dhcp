@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"sync"
 	"time"
 
@@ -20,7 +21,7 @@ func NewMemoryLeaseRegistry() LeaseRegistry {
 }
 
 // Get the lease for the given IP
-func (r *memoryLeaseRegistry) GetByIP(ip string) (*Lease, error) {
+func (r *memoryLeaseRegistry) GetByIP(ctx context.Context, ip string) (*Lease, error) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
@@ -32,7 +33,7 @@ func (r *memoryLeaseRegistry) GetByIP(ip string) (*Lease, error) {
 }
 
 // Get all the leases for the given hardware address
-func (r *memoryLeaseRegistry) ListByCHAddr(chAddr string) ([]Lease, error) {
+func (r *memoryLeaseRegistry) ListByCHAddr(ctx context.Context, chAddr string) ([]Lease, error) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
@@ -46,7 +47,7 @@ func (r *memoryLeaseRegistry) ListByCHAddr(chAddr string) ([]Lease, error) {
 }
 
 // Remove the given lease
-func (r *memoryLeaseRegistry) Remove(l *Lease) error {
+func (r *memoryLeaseRegistry) Remove(ctx context.Context, l *Lease) error {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
@@ -55,7 +56,7 @@ func (r *memoryLeaseRegistry) Remove(l *Lease) error {
 }
 
 // Create a lease with given IP, hardware address and time to live.
-func (r *memoryLeaseRegistry) Create(ip string, chAddr string, ttl time.Duration) (*Lease, error) {
+func (r *memoryLeaseRegistry) Create(ctx context.Context, ip string, chAddr string, ttl time.Duration) (*Lease, error) {
 	t := time.Now().Add(ttl)
 	seconds := t.Unix()
 	nanos := int32(t.UnixNano())

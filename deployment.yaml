@@ -5,6 +5,22 @@ metadata:
 
 ---
 
+apiVersion: apiextensions.k8s.io/v1beta1
+kind: CustomResourceDefinition
+metadata:
+  name: leases.dhcp.pulcy.com
+spec:
+  group: dhcp.pulcy.com
+  version: v1
+  # either Namespaced or Cluster
+  scope: Cluster
+  names:
+    plural: leases
+    singular: lease
+    kind: Lease
+
+---
+
 apiVersion: rbac.authorization.k8s.io/v1beta1
 kind: ClusterRole
 metadata:
@@ -16,7 +32,13 @@ rules:
   - configmaps
   verbs:
   - "*"
-
+- apiGroups:
+  - dhcp.pulcy.com
+  resources:
+  - leases
+  verbs:
+  - "*"
+  
 ---
 
 apiVersion: rbac.authorization.k8s.io/v1beta1
@@ -50,7 +72,7 @@ spec:
       containers:
       - name: server
         imagePullPolicy: IfNotPresent
-        image: pulcy/kube-dhcp@sha256:adc24ec063a43e51d25d77975ff999066db8720708bc33ea66311afdaa1ca2ef
+        image: pulcy/kube-dhcp@sha256:2460fee3c1d894aa0bff541b8c07468c596d9bc501a07b3bd3228acb5d57b144
         env:
         - name: METADATA_NAMESPACE
           valueFrom:

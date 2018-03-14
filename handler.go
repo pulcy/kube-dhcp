@@ -11,13 +11,13 @@ import (
 )
 
 // NewHandler creates a DHCP handler for the given config
-func NewHandler(config DHCPConfig) (*DHCPHandler, error) {
+func NewHandler(config DHCPConfig, registry LeaseRegistry) (*DHCPHandler, error) {
 	handler := &DHCPHandler{
 		ip:             parseIP(config.ServerIP),
 		leaseDuration:  2 * time.Hour,
 		ranges:         config.Ranges,
 		defaultOptions: config.Options,
-		leases:         NewMemoryLeaseRegistry(),
+		leases:         registry,
 	}
 	return handler, nil
 }
@@ -63,7 +63,8 @@ func (h *DHCPHandler) ServeDHCP(p dhcp.Packet, msgType dhcp.MessageType, options
 		ip, nic := "", p.CHAddr().String()
 		log.Printf("Discover: ip=%s nic=%s options=%v\n", ip, nic, options)
 		// Find current leases
-		if list, err := h.leases.ListByCHAddr(nic); err == nil && len(list) > 0 {
+		ctx := context.Background()
+		if list, err := h.leases.ListByCHAddr(ctx, nic); err == nil && len(list) > 0 {
 			ip = list[0].IP
 		}
 		if ip == "" {
@@ -90,11 +91,12 @@ func (h *DHCPHandler) ServeDHCP(p dhcp.Packet, msgType dhcp.MessageType, options
 
 		if len(reqIP) == 4 && !reqIP.Equal(net.IPv4zero) {
 			if h.isInRange(reqIP) {
+				ctx := context.Background()
 				ip := reqIP.String()
 				chAddr := p.CHAddr().String()
-				l, err := h.leases.GetByIP(ip)
+				l, err := h.leases.GetByIP(ctx, ip)
 				if IsLeaseNotFound(err) || ((err == nil) && l.CHAddr == chAddr) {
-					_, err := h.leases.Create(ip, chAddr, h.leaseDuration)
+					_, err := h.leases.Create(ctx, ip, chAddr, h.leaseDuration)
 					if err == nil {
 						replyOpts := h.buildOptions(reqIP)
 						return dhcp.ReplyPacket(p, dhcp.ACK, h.ip, reqIP, h.leaseDuration,
@@ -108,13 +110,14 @@ func (h *DHCPHandler) ServeDHCP(p dhcp.Packet, msgType dhcp.MessageType, options
 
 	case dhcp.Release, dhcp.Decline:
 		nic := p.CHAddr().String()
+		ctx := context.Background()
 		log.Printf("Release/Decline: nic=%s\n", nic)
-		leases, err := h.leases.ListByCHAddr(nic)
+		leases, err := h.leases.ListByCHAddr(ctx, nic)
 		if err != nil {
 			log.Printf("Failed to list leases for '%s': %v\n", nic, err)
 		} else {
 			for _, l := range leases {
-				if err := h.leases.Remove(&l); err != nil {
+				if err := h.leases.Remove(ctx, &l); err != nil {
 					log.Printf("Failed to remove lease '%s': %v\n", l.IP, err)
 				}
 			}
@@ -137,19 +140,20 @@ func (h *DHCPHandler) isInRange(ip net.IP) bool {
 // Returns an empty string if no free address is found.
 func (h *DHCPHandler) findFreeLease() string {
 	rangePerms := rand.Perm(len(h.ranges))
+	ctx := context.Background()
 	for _, rIdx := range rangePerms {
 		r := h.ranges[rIdx]
 		start := parseIP(r.Start)
 		offsetPerm := rand.Perm(r.Length)
 		for _, ofs := range offsetPerm {
 			ip := dhcp.IPAdd(start, ofs).String()
-			l, err := h.leases.GetByIP(ip)
+			l, err := h.leases.GetByIP(ctx, ip)
 			if IsLeaseNotFound(err) {
 				return ip
 			}
 			if err == nil && l.IsExpired() {
 				// Existing lease is expired
-				err := h.leases.Remove(l)
+				err := h.leases.Remove(ctx, l)
 				if err == nil {
 					return l.IP
 				}

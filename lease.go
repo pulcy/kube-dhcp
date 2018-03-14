@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
 	"time"
 
+	"github.com/ericchiang/k8s"
 	metav1 "github.com/ericchiang/k8s/apis/meta/v1"
 	"github.com/pkg/errors"
 )
@@ -19,9 +21,15 @@ func IsLeaseNotFound(err error) bool {
 
 // Lease is a single IP address claim
 type Lease struct {
-	IP          string      `json:"ip"`         // Leased IP address
-	CHAddr      string      `json:"chaddr"`     // Client's hardware address
-	ExpiratesAt metav1.Time `json:"expires-at"` // When the lease expires
+	Metadata    *metav1.ObjectMeta `json:"metadata"`
+	IP          string             `json:"ip"`         // Leased IP address
+	CHAddr      string             `json:"chaddr"`     // Client's hardware address
+	ExpiratesAt metav1.Time        `json:"expires-at"` // When the lease expires
+}
+
+// GetMetadata is required to implement k8s.Resource
+func (l *Lease) GetMetadata() *metav1.ObjectMeta {
+	return l.Metadata
 }
 
 // GetExpiresAt returns the expiration time of the lease
@@ -37,14 +45,31 @@ func (l Lease) IsExpired() bool {
 	return l.GetExpiresAt().Before(time.Now())
 }
 
+// LeaseList is a k8s list of Lease's
+type LeaseList struct {
+	Metadata *metav1.ListMeta `json:"metadata"`
+	Items    []Lease          `json:"items"`
+}
+
+// GetMetadata is required to implement k8s.Resource
+func (l *LeaseList) GetMetadata() *metav1.ListMeta {
+	return l.Metadata
+}
+
 // LeaseRegistry abstracts a registry of leases.
 type LeaseRegistry interface {
 	// Get the lease for the given IP
-	GetByIP(ip string) (*Lease, error)
+	GetByIP(ctx context.Context, ip string) (*Lease, error)
 	// Get all leases for the given hardware address
-	ListByCHAddr(chAddr string) ([]Lease, error)
+	ListByCHAddr(ctx context.Context, chAddr string) ([]Lease, error)
 	// Remove the given lease
-	Remove(l *Lease) error
+	Remove(ctx context.Context, l *Lease) error
 	// Create a lease with given IP, hardware address and time to live.
-	Create(ip string, chAddr string, ttl time.Duration) (*Lease, error)
+	Create(ctx context.Context, ip string, chAddr string, ttl time.Duration) (*Lease, error)
+}
+
+func init() {
+	// Register resources with the k8s package.
+	k8s.Register("dhcp.pulcy.com", "v1", "leases", false, &Lease{})
+	k8s.RegisterList("dhcp.pulcy.com", "v1", "leases", false, &LeaseList{})
 }

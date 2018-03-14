@@ -36,6 +36,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	registry := NewKubeLeaseRegistry(client)
 
 	// Watch for config changes, relaunch handler on a valid change.
 	ctx := context.Background()
@@ -47,7 +48,7 @@ func main() {
 		select {
 		case config := <-configChan:
 			// Create handler
-			handler, err := NewHandler(config)
+			handler, err := NewHandler(config, registry)
 			if err != nil {
 				log.Fatalf("Creating handler failed: %s\n", err)
 			}
