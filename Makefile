@@ -4,6 +4,12 @@ endif
 
 MANIFESTTOOL := $(GOPATH)/bin/manifest-tool
 
+# Development build
+.PHONY: build
+build:
+	docker build -f Dockerfile.build --build-arg=GOARCH=$(shell go env GOARCH) -t $(DOCKERIMAGE) .
+
+# Build all images for all archs.
 .PHONY: all
 all:
 	@${MAKE} -B DOCKERIMAGE=$(DOCKERIMAGE) GOARCH=amd64 build-arch
@@ -20,7 +26,7 @@ $(MANIFESTTOOL):
 
 .PHONY: push-manifest
 push-manifest: $(MANIFESTTOOL)
-	$(MANIFESTTOOL) push from-args \
+	@$(MANIFESTTOOL) $(MANIFESTAUTH) push from-args \
     	--platforms linux/amd64,linux/arm,linux/arm64 \
     	--template $(DOCKERIMAGE)-ARCH \
     	--target $(DOCKERIMAGE)

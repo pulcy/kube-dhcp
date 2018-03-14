@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"log"
 	"math/rand"
 	"net"
 	"time"
@@ -12,22 +13,11 @@ import (
 // NewHandler creates a DHCP handler for the given config
 func NewHandler(config DHCPConfig) (*DHCPHandler, error) {
 	handler := &DHCPHandler{
-		ip:            net.ParseIP(config.ServerIP),
-		leaseDuration: 2 * time.Hour,
-		ranges:        config.Ranges,
-		leases:        make(map[string]lease, 10),
-		options:       dhcp.Options{},
-	}
-	if config.Options.SubnetMask != "" {
-		handler.options[dhcp.OptionSubnetMask] = net.ParseIP(config.Options.SubnetMask)
-	} else {
-		handler.options[dhcp.OptionSubnetMask] = net.ParseIP("255.255.255.0")
-	}
-	if config.Options.RouterIP != "" {
-		handler.options[dhcp.OptionRouter] = net.ParseIP(config.Options.RouterIP)
-	}
-	if config.Options.DNSServerIP != "" {
-		handler.options[dhcp.OptionDomainNameServer] = net.ParseIP(config.Options.DNSServerIP)
+		ip:             parseIP(config.ServerIP),
+		leaseDuration:  2 * time.Hour,
+		ranges:         config.Ranges,
+		defaultOptions: config.Options,
+		leases:         make(map[string]lease, 10),
 	}
 	return handler, nil
 }
@@ -63,11 +53,11 @@ type lease struct {
 }
 
 type DHCPHandler struct {
-	ip            net.IP       // Server IP to use
-	options       dhcp.Options // Options to send to DHCP Clients
-	ranges        []AddressRange
-	leaseDuration time.Duration    // Lease period
-	leases        map[string]lease // Map to keep track of leases (ip->lease)
+	ip             net.IP // Server IP to use
+	defaultOptions DHCPOptions
+	ranges         []AddressRange
+	leaseDuration  time.Duration    // Lease period
+	leases         map[string]lease // Map to keep track of leases (ip->lease)
 }
 
 // ServeDHCP serves DHCP requests.
@@ -76,6 +66,7 @@ func (h *DHCPHandler) ServeDHCP(p dhcp.Packet, msgType dhcp.MessageType, options
 
 	case dhcp.Discover:
 		ip, nic := "", p.CHAddr().String()
+		log.Printf("Discover: ip=%s nic=%s options=%v\n", ip, nic, options)
 		for k, v := range h.leases { // Find previous lease
 			if v.nic == nic {
 				ip = k
@@ -86,11 +77,16 @@ func (h *DHCPHandler) ServeDHCP(p dhcp.Packet, msgType dhcp.MessageType, options
 			ip = h.findFreeLease()
 		}
 		if ip != "" {
-			return dhcp.ReplyPacket(p, dhcp.Offer, h.ip, net.ParseIP(ip), h.leaseDuration,
-				h.options.SelectOrderOrAll(options[dhcp.OptionParameterRequestList]))
+			ip4 := parseIP(ip)
+			replyOpts := h.buildOptions(ip4)
+			log.Printf("Discover: Offering ip=%s options=%v\n", ip, replyOpts)
+			return dhcp.ReplyPacket(p, dhcp.Offer, h.ip, ip4, h.leaseDuration,
+				replyOpts.SelectOrderOrAll(options[dhcp.OptionParameterRequestList]))
 		}
+		log.Println("Discover: No free IP found")
 
 	case dhcp.Request:
+		log.Printf("Request: nic=%s options=%v\n", p.CHAddr().String(), options)
 		if server, ok := options[dhcp.OptionServerIdentifier]; ok && !net.IP(server).Equal(h.ip) {
 			return nil // Message not for this dhcp server
 		}
@@ -105,8 +101,9 @@ func (h *DHCPHandler) ServeDHCP(p dhcp.Packet, msgType dhcp.MessageType, options
 				l, found := h.leases[ip]
 				if !found || l.nic == p.CHAddr().String() {
 					h.leases[ip] = lease{nic: p.CHAddr().String(), expiry: time.Now().Add(h.leaseDuration)}
+					replyOpts := h.buildOptions(reqIP)
 					return dhcp.ReplyPacket(p, dhcp.ACK, h.ip, reqIP, h.leaseDuration,
-						h.options.SelectOrderOrAll(options[dhcp.OptionParameterRequestList]))
+						replyOpts.SelectOrderOrAll(options[dhcp.OptionParameterRequestList]))
 				}
 			}
 		}
@@ -114,6 +111,7 @@ func (h *DHCPHandler) ServeDHCP(p dhcp.Packet, msgType dhcp.MessageType, options
 
 	case dhcp.Release, dhcp.Decline:
 		nic := p.CHAddr().String()
+		log.Printf("Release/Decline: nic=%s\n", nic)
 		for k, v := range h.leases {
 			if v.nic == nic {
 				delete(h.leases, k)
@@ -141,7 +139,7 @@ func (h *DHCPHandler) findFreeLease() string {
 	now := time.Now()
 	for _, rIdx := range rangePerms {
 		r := h.ranges[rIdx]
-		start := net.ParseIP(r.Start)
+		start := parseIP(r.Start)
 		offsetPerm := rand.Perm(r.Length)
 		for _, ofs := range offsetPerm {
 			ip := dhcp.IPAdd(start, ofs).String()
@@ -157,4 +155,25 @@ func (h *DHCPHandler) findFreeLease() string {
 		}
 	}
 	return ""
+}
+
+// buildOptions creates a set of options for the given IP.
+func (h *DHCPHandler) buildOptions(ip net.IP) dhcp.Options {
+	options := make(dhcp.Options)
+	config := h.defaultOptions
+	subnetMask := config.SubnetMask
+	if subnetMask == "" {
+		subnetMask = "255.255.255.0"
+	}
+	options[dhcp.OptionSubnetMask] = parseIP(subnetMask)
+	if config.RouterIP != "" {
+		options[dhcp.OptionRouter] = parseIP(config.RouterIP)
+	}
+	if config.DNSServerIP != "" {
+		options[dhcp.OptionDomainNameServer] = parseIP(config.DNSServerIP)
+	}
+	if config.DomainName != "" {
+		options[dhcp.OptionDomainName] = []byte(config.DomainName)
+	}
+	return options
 }

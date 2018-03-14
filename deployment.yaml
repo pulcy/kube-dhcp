@@ -50,7 +50,7 @@ spec:
       containers:
       - name: server
         imagePullPolicy: IfNotPresent
-        image: pulcy/kube-dhcp
+        image: pulcy/kube-dhcp@sha256:adc24ec063a43e51d25d77975ff999066db8720708bc33ea66311afdaa1ca2ef
         env:
         - name: METADATA_NAMESPACE
           valueFrom:

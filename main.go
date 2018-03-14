@@ -57,9 +57,13 @@ func main() {
 			}
 			// Prepare context for new handler
 			handlerCtx, cancel := context.WithCancel(ctx)
-			go handler.Run(handlerCtx)
+			go func() {
+				if err := handler.Run(handlerCtx); err != nil {
+					log.Printf("Run failed: %v\n", err)
+				}
+			}()
 			stopFunc = cancel
-			log.Printf("Launch updated handler\n")
+			log.Printf("Launched updated handler on %s\n", config.ServerIP)
 		}
 	}
 }

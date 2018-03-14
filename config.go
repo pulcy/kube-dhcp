@@ -12,11 +12,36 @@ type DHCPConfig struct {
 	// ServerIP is the IP address of the server itself
 	ServerIP string         `json:"server-ip"`
 	Ranges   []AddressRange `json:"ranges"`
-	Options  struct {
-		SubnetMask  string `json:"subnet-mask,omitempty"`
-		RouterIP    string `json:"router-ip,omitempty"`
-		DNSServerIP string `json:"dns-ip,omitempty"`
-	} `json:"options"`
+	Options  DHCPOptions    `json:"options"`
+}
+
+// DHCPOptions holds various options of the DHCP protocol
+type DHCPOptions struct {
+	SubnetMask  string `json:"subnet-mask,omitempty"`
+	RouterIP    string `json:"router-ip,omitempty"`
+	DNSServerIP string `json:"dns-ip,omitempty"`
+	DomainName  string `json:"domain,omitempty"`
+}
+
+// Validate changes the values in the given config.
+// Returns nil if all ok, otherwise an error.
+func (o DHCPOptions) Validate() error {
+	if o.SubnetMask != "" {
+		if ip := parseIP(o.SubnetMask); ip == nil {
+			return maskAny(fmt.Errorf("Failed to parse subnet-mask option '%s'", o.SubnetMask))
+		}
+	}
+	if o.RouterIP != "" {
+		if ip := parseIP(o.RouterIP); ip == nil {
+			return maskAny(fmt.Errorf("Failed to parse router-ip option '%s'", o.RouterIP))
+		}
+	}
+	if o.DNSServerIP != "" {
+		if ip := parseIP(o.DNSServerIP); ip == nil {
+			return maskAny(fmt.Errorf("Failed to parse dns-ip option '%s'", o.DNSServerIP))
+		}
+	}
+	return nil
 }
 
 // AddressRange is a range of IP addresses that can be assigned.
@@ -28,7 +53,7 @@ type AddressRange struct {
 // Validate changes the values in the given range.
 // Returns nil if all ok, otherwise an error.
 func (r AddressRange) Validate() error {
-	ip := net.ParseIP(r.Start)
+	ip := parseIP(r.Start)
 	if ip == nil {
 		return maskAny(fmt.Errorf("Failed to parse range start '%s'", r.Start))
 	}
@@ -43,18 +68,18 @@ func (r AddressRange) Validate() error {
 
 // Contains returns true when the given IP is part of this range, false otherwise.
 func (r AddressRange) Contains(ip net.IP) bool {
-	start := net.ParseIP(r.Start)
+	start := parseIP(r.Start)
 	stop := dhcp.IPAdd(start, r.Length)
 	return dhcp.IPInRange(start, stop, ip)
 }
 
 // Validate changes the values in the given config.
 // Returns nil if all ok, otherwise an error.
-func (c DHCPConfig) Validate(defaultServerIP string) error {
+func (c *DHCPConfig) Validate(defaultServerIP string) error {
 	if c.ServerIP == "" {
 		c.ServerIP = defaultServerIP
 	}
-	if ip := net.ParseIP(c.ServerIP); ip == nil {
+	if ip := parseIP(c.ServerIP); ip == nil {
 		return maskAny(fmt.Errorf("Failed to parse server-ip '%s'", c.ServerIP))
 	}
 	for _, r := range c.Ranges {
@@ -62,20 +87,8 @@ func (c DHCPConfig) Validate(defaultServerIP string) error {
 			return maskAny(err)
 		}
 	}
-	if c.Options.SubnetMask != "" {
-		if ip := net.ParseIP(c.Options.SubnetMask); ip == nil {
-			return maskAny(fmt.Errorf("Failed to parse subnet-mask option '%s'", c.Options.SubnetMask))
-		}
-	}
-	if c.Options.RouterIP != "" {
-		if ip := net.ParseIP(c.Options.RouterIP); ip == nil {
-			return maskAny(fmt.Errorf("Failed to parse router-ip option '%s'", c.Options.RouterIP))
-		}
-	}
-	if c.Options.DNSServerIP != "" {
-		if ip := net.ParseIP(c.Options.DNSServerIP); ip == nil {
-			return maskAny(fmt.Errorf("Failed to parse dns-ip option '%s'", c.Options.DNSServerIP))
-		}
+	if err := c.Options.Validate(); err != nil {
+		return maskAny(err)
 	}
 	return nil
 }
