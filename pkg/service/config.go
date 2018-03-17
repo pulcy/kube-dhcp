@@ -1,10 +1,12 @@
-package main
+package service
 
 import (
 	"fmt"
 	"net"
 
 	dhcp "github.com/krolaw/dhcp4"
+
+	"github.com/pulcy/kube-dhcp/pkg/util"
 )
 
 // DHCPConfig holds the configuration structure of the DHCP server.
@@ -27,17 +29,17 @@ type DHCPOptions struct {
 // Returns nil if all ok, otherwise an error.
 func (o DHCPOptions) Validate() error {
 	if o.SubnetMask != "" {
-		if ip := parseIP(o.SubnetMask); ip == nil {
+		if ip := util.ParseIP(o.SubnetMask); ip == nil {
 			return maskAny(fmt.Errorf("Failed to parse subnet-mask option '%s'", o.SubnetMask))
 		}
 	}
 	if o.RouterIP != "" {
-		if ip := parseIP(o.RouterIP); ip == nil {
+		if ip := util.ParseIP(o.RouterIP); ip == nil {
 			return maskAny(fmt.Errorf("Failed to parse router-ip option '%s'", o.RouterIP))
 		}
 	}
 	if o.DNSServerIP != "" {
-		if ip := parseIP(o.DNSServerIP); ip == nil {
+		if ip := util.ParseIP(o.DNSServerIP); ip == nil {
 			return maskAny(fmt.Errorf("Failed to parse dns-ip option '%s'", o.DNSServerIP))
 		}
 	}
@@ -53,7 +55,7 @@ type AddressRange struct {
 // Validate changes the values in the given range.
 // Returns nil if all ok, otherwise an error.
 func (r AddressRange) Validate() error {
-	ip := parseIP(r.Start)
+	ip := util.ParseIP(r.Start)
 	if ip == nil {
 		return maskAny(fmt.Errorf("Failed to parse range start '%s'", r.Start))
 	}
@@ -68,7 +70,7 @@ func (r AddressRange) Validate() error {
 
 // Contains returns true when the given IP is part of this range, false otherwise.
 func (r AddressRange) Contains(ip net.IP) bool {
-	start := parseIP(r.Start)
+	start := util.ParseIP(r.Start)
 	stop := dhcp.IPAdd(start, r.Length)
 	return dhcp.IPInRange(start, stop, ip)
 }
@@ -79,7 +81,7 @@ func (c *DHCPConfig) Validate(defaultServerIP string) error {
 	if c.ServerIP == "" {
 		c.ServerIP = defaultServerIP
 	}
-	if ip := parseIP(c.ServerIP); ip == nil {
+	if ip := util.ParseIP(c.ServerIP); ip == nil {
 		return maskAny(fmt.Errorf("Failed to parse server-ip '%s'", c.ServerIP))
 	}
 	for _, r := range c.Ranges {

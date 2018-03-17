@@ -1,4 +1,4 @@
-package main
+package service
 
 import (
 	"context"
@@ -10,9 +10,9 @@ import (
 	"github.com/ghodss/yaml"
 )
 
-// watchForConfigChanges starts a process that continues to watch for configuration
+// WatchForConfigChanges starts a process that continues to watch for configuration
 // changes until the given context is canceled.
-func watchForConfigChanges(ctx context.Context, cli *k8s.Client, configMapName, namespace, nodeIP string, configChan chan DHCPConfig) {
+func WatchForConfigChanges(ctx context.Context, cli *k8s.Client, configMapName, namespace, nodeIP string, configChan chan DHCPConfig) {
 	// Load config, then watch for changes
 	var configMap corev1.ConfigMap
 	watcher, err := cli.Watch(ctx, namespace, &configMap)

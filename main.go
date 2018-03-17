@@ -8,6 +8,9 @@ import (
 	"github.com/ericchiang/k8s"
 	"github.com/pkg/errors"
 	"github.com/spf13/pflag"
+
+	"github.com/pulcy/kube-dhcp/pkg/registry"
+	"github.com/pulcy/kube-dhcp/pkg/service"
 )
 
 var (
@@ -36,19 +39,21 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	registry := NewKubeLeaseRegistry(client)
+	registry := registry.NewKubeLeaseRegistry(client)
 
 	// Watch for config changes, relaunch handler on a valid change.
 	ctx := context.Background()
-	configChan := make(chan DHCPConfig)
-	go watchForConfigChanges(ctx, client, options.configMapName, namespace, nodeIP, configChan)
+	configChan := make(chan service.DHCPConfig)
+	go service.WatchForConfigChanges(ctx, client, options.configMapName, namespace, nodeIP, configChan)
+
+	log.Printf("Starting kube-dhcp on %s\n", nodeIP)
 
 	var stopFunc context.CancelFunc
 	for {
 		select {
 		case config := <-configChan:
 			// Create handler
-			handler, err := NewHandler(config, registry)
+			handler, err := service.NewHandler(config, registry)
 			if err != nil {
 				log.Fatalf("Creating handler failed: %s\n", err)
 			}

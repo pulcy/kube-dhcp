@@ -1,4 +1,4 @@
-package main
+package service
 
 import (
 	"context"
@@ -8,12 +8,14 @@ import (
 	"time"
 
 	dhcp "github.com/krolaw/dhcp4"
+
+	"github.com/pulcy/kube-dhcp/pkg/util"
 )
 
 // NewHandler creates a DHCP handler for the given config
 func NewHandler(config DHCPConfig, registry LeaseRegistry) (*DHCPHandler, error) {
 	handler := &DHCPHandler{
-		ip:             parseIP(config.ServerIP),
+		ip:             util.ParseIP(config.ServerIP),
 		leaseDuration:  2 * time.Hour,
 		ranges:         config.Ranges,
 		defaultOptions: config.Options,
@@ -65,13 +67,13 @@ func (h *DHCPHandler) ServeDHCP(p dhcp.Packet, msgType dhcp.MessageType, options
 		// Find current leases
 		ctx := context.Background()
 		if list, err := h.leases.ListByCHAddr(ctx, nic); err == nil && len(list) > 0 {
-			ip = list[0].IP
+			ip = list[0].GetIP()
 		}
 		if ip == "" {
 			ip = h.findFreeLease()
 		}
 		if ip != "" {
-			ip4 := parseIP(ip)
+			ip4 := util.ParseIP(ip)
 			replyOpts := h.buildOptions(ip4)
 			log.Printf("Discover: Offering ip=%s options=%v\n", ip, replyOpts)
 			return dhcp.ReplyPacket(p, dhcp.Offer, h.ip, ip4, h.leaseDuration,
@@ -85,6 +87,10 @@ func (h *DHCPHandler) ServeDHCP(p dhcp.Packet, msgType dhcp.MessageType, options
 			return nil // Message not for this dhcp server
 		}
 		reqIP := net.IP(options[dhcp.OptionRequestedIPAddress])
+		hostname := ""
+		if rawHostname, found := options[dhcp.OptionHostName]; found {
+			hostname = string(rawHostname)
+		}
 		if reqIP == nil {
 			reqIP = net.IP(p.CIAddr())
 		}
@@ -95,8 +101,8 @@ func (h *DHCPHandler) ServeDHCP(p dhcp.Packet, msgType dhcp.MessageType, options
 				ip := reqIP.String()
 				chAddr := p.CHAddr().String()
 				l, err := h.leases.GetByIP(ctx, ip)
-				if IsLeaseNotFound(err) || ((err == nil) && l.CHAddr == chAddr) {
-					_, err := h.leases.Create(ctx, ip, chAddr, h.leaseDuration)
+				if IsLeaseNotFound(err) || ((err == nil) && l.GetCHAddr() == chAddr) {
+					_, err := h.leases.Create(ctx, ip, chAddr, hostname, h.leaseDuration)
 					if err == nil {
 						replyOpts := h.buildOptions(reqIP)
 						return dhcp.ReplyPacket(p, dhcp.ACK, h.ip, reqIP, h.leaseDuration,
@@ -117,8 +123,8 @@ func (h *DHCPHandler) ServeDHCP(p dhcp.Packet, msgType dhcp.MessageType, options
 			log.Printf("Failed to list leases for '%s': %v\n", nic, err)
 		} else {
 			for _, l := range leases {
-				if err := h.leases.Remove(ctx, &l); err != nil {
-					log.Printf("Failed to remove lease '%s': %v\n", l.IP, err)
+				if err := h.leases.Remove(ctx, l); err != nil {
+					log.Printf("Failed to remove lease '%s': %v\n", l.GetIP(), err)
 				}
 			}
 		}
@@ -143,7 +149,7 @@ func (h *DHCPHandler) findFreeLease() string {
 	ctx := context.Background()
 	for _, rIdx := range rangePerms {
 		r := h.ranges[rIdx]
-		start := parseIP(r.Start)
+		start := util.ParseIP(r.Start)
 		offsetPerm := rand.Perm(r.Length)
 		for _, ofs := range offsetPerm {
 			ip := dhcp.IPAdd(start, ofs).String()
@@ -151,11 +157,13 @@ func (h *DHCPHandler) findFreeLease() string {
 			if IsLeaseNotFound(err) {
 				return ip
 			}
-			if err == nil && l.IsExpired() {
+			if err != nil {
+				log.Printf("Failed to get lease for IP '%s': %v\n", ip, err)
+			} else if l.IsExpired() {
 				// Existing lease is expired
 				err := h.leases.Remove(ctx, l)
 				if err == nil {
-					return l.IP
+					return l.GetIP()
 				}
 				log.Printf("Failed to remove lease '%s': %v\n", ip, err)
 			}
@@ -172,12 +180,12 @@ func (h *DHCPHandler) buildOptions(ip net.IP) dhcp.Options {
 	if subnetMask == "" {
 		subnetMask = "255.255.255.0"
 	}
-	options[dhcp.OptionSubnetMask] = parseIP(subnetMask)
+	options[dhcp.OptionSubnetMask] = util.ParseIP(subnetMask)
 	if config.RouterIP != "" {
-		options[dhcp.OptionRouter] = parseIP(config.RouterIP)
+		options[dhcp.OptionRouter] = util.ParseIP(config.RouterIP)
 	}
 	if config.DNSServerIP != "" {
-		options[dhcp.OptionDomainNameServer] = parseIP(config.DNSServerIP)
+		options[dhcp.OptionDomainNameServer] = util.ParseIP(config.DNSServerIP)
 	}
 	if config.DomainName != "" {
 		options[dhcp.OptionDomainName] = []byte(config.DomainName)

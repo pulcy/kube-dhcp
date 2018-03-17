@@ -18,6 +18,8 @@ spec:
     plural: leases
     singular: lease
     kind: Lease
+    shortNames:
+      - dl
 
 ---
 
@@ -72,7 +74,7 @@ spec:
       containers:
       - name: server
         imagePullPolicy: IfNotPresent
-        image: pulcy/kube-dhcp@sha256:2460fee3c1d894aa0bff541b8c07468c596d9bc501a07b3bd3228acb5d57b144
+        image: pulcy/kube-dhcp-arm64@sha256:409c7bea83d82b6bb2f9e910b709ebff35ce8675915d95a4bbb3832d17044709
         env:
         - name: METADATA_NAMESPACE
           valueFrom:
