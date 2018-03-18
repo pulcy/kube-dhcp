@@ -32,6 +32,7 @@ rules:
   - ""
   resources:
   - configmaps
+  - namespaces
   verbs:
   - "*"
 - apiGroups:
@@ -64,7 +65,7 @@ metadata:
   name: kube-dhcp
   namespace: dhcp-system
 spec:
-  replicas: 1
+  replicas: 2
   template:
     metadata:
       labels:
@@ -74,7 +75,7 @@ spec:
       containers:
       - name: server
         imagePullPolicy: IfNotPresent
-        image: pulcy/kube-dhcp-arm64@sha256:409c7bea83d82b6bb2f9e910b709ebff35ce8675915d95a4bbb3832d17044709
+        image: pulcy/kube-dhcp-arm64@sha256:dd2a108213090986c4f2d5c23fcd4dc5d81e1c1538d21ffe3b2ad103d10be056
         env:
         - name: METADATA_NAMESPACE
           valueFrom:
