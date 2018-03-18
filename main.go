@@ -8,6 +8,9 @@ import (
 	"github.com/ericchiang/k8s"
 	"github.com/pkg/errors"
 	"github.com/spf13/pflag"
+
+	"github.com/pulcy/kube-dhcp/pkg/registry"
+	"github.com/pulcy/kube-dhcp/pkg/service"
 )
 
 var (
@@ -27,6 +30,10 @@ func main() {
 	if namespace == "" {
 		log.Fatal("METADATA_NAMESPACE not set\n")
 	}
+	name := os.Getenv("METADATA_NAME")
+	if name == "" {
+		log.Fatal("METADATA_NAME not set\n")
+	}
 	nodeIP := os.Getenv("METADATA_NODE_IP")
 	if nodeIP == "" {
 		log.Fatal("METADATA_NODE_IP not set\n")
@@ -36,24 +43,40 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	registry := registry.NewKubeLeaseRegistry(client)
 
 	// Watch for config changes, relaunch handler on a valid change.
 	ctx := context.Background()
-	configChan := make(chan DHCPConfig)
-	go watchForConfigChanges(ctx, client, options.configMapName, namespace, nodeIP, configChan)
+	configChan := make(chan service.DHCPConfig)
+	go service.WatchForConfigChanges(ctx, client, options.configMapName, namespace, nodeIP, configChan)
+	leaderChan := make(chan bool, 32)
+	go service.PerformLeaderElection(ctx, client, namespace, name, leaderChan)
+
+	log.Printf("Starting kube-dhcp on %s\n", nodeIP)
 
 	var stopFunc context.CancelFunc
+	isLeader := false
+	var config *service.DHCPConfig
 	for {
 		select {
-		case config := <-configChan:
-			// Create handler
-			handler, err := NewHandler(config)
+		case l := <-leaderChan:
+			if isLeader == l {
+				continue
+			}
+			isLeader = l
+		case cfg := <-configChan:
+			config = &cfg
+		}
+		// Stop current handler (if any)
+		if stopFunc != nil {
+			stopFunc()
+			stopFunc = nil
+		}
+		// Create handler if leader & have config
+		if isLeader && config != nil {
+			handler, err := service.NewHandler(*config, registry)
 			if err != nil {
 				log.Fatalf("Creating handler failed: %s\n", err)
-			}
-			// Stop current handler
-			if stopFunc != nil {
-				stopFunc()
 			}
 			// Prepare context for new handler
 			handlerCtx, cancel := context.WithCancel(ctx)

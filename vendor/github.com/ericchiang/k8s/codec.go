@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 
+	metav1 "github.com/ericchiang/k8s/apis/meta/v1"
 	"github.com/ericchiang/k8s/runtime"
 	"github.com/golang/protobuf/proto"
 )
@@ -45,10 +47,12 @@ func unmarshal(data []byte, contentType string, i interface{}) error {
 		return nil
 	}
 	if isPBMsg {
-		// only decode into JSON of a protobuf message if the type
-		// explicitly implements json.Unmarshaler
-		if _, ok := i.(json.Unmarshaler); !ok {
-			return errors.New("cannot decode json payload into protobuf object")
+		if _, ok := i.(*metav1.Status); ok {
+			// only decode into JSON of a protobuf message if the type
+			// explicitly implements json.Unmarshaler
+			if _, ok := i.(json.Unmarshaler); !ok {
+				return errors.New("cannot decode json payload into protobuf object: " + string(data) + ", " + reflect.TypeOf(i).String())
+			}
 		}
 	}
 	if err := json.Unmarshal(data, i); err != nil {

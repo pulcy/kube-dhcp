@@ -2,15 +2,13 @@
 FROM golang:1.10.0-alpine AS build-env
 
 ARG GOARCH=amd64
-ENV GOPATH /usr/code
+ENV GOPATH /usr/code/.gobuild
 ENV CGO_ENABLED 0
 
 WORKDIR /usr/code
-COPY vendor/github.com /usr/code/src/github.com/
-COPY vendor/golang.org /usr/code/src/golang.org/
-COPY vendor/gopkg.in /usr/code/src/gopkg.in/
 ADD . /usr/code
-RUN GOARCH=${GOARCH} go build -installsuffix cgo -o kube-dhcp-${GOARCH}
+RUN mkdir -p /usr/code/.gobuild/src/github.com/pulcy && ln -s ../../../../ /usr/code/.gobuild/src/github.com/pulcy/kube-dhcp
+RUN GOARCH=${GOARCH} go build -installsuffix cgo -o kube-dhcp-${GOARCH} github.com/pulcy/kube-dhcp
 RUN ls -al
 
 # final stage
