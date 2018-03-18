@@ -16,13 +16,18 @@ const (
 
 // Lease is a single IP address claim
 type Lease struct {
-	Kind        string             `json:"kind,omitempty"`
-	ApiVersion  string             `json:"apiVersion,omitempty"`
-	Metadata    *metav1.ObjectMeta `json:"metadata"`
-	IP          string             `json:"ip"`         // Leased IP address
-	CHAddr      string             `json:"chaddr"`     // Client's hardware address
-	HostName    string             `json:"hostname"`   // Hostname of the user of the lease
-	ExpiratesAt int64              `json:"expires-at"` // When the lease expires
+	Kind       string             `json:"kind,omitempty"`
+	APIVersion string             `json:"apiVersion,omitempty"`
+	Metadata   *metav1.ObjectMeta `json:"metadata"`
+	Spec       LeaseSpec          `json:"spec"`
+}
+
+// LeaseSpec is the specification part of a Lease.
+type LeaseSpec struct {
+	IP          string      `json:"ip"`         // Leased IP address
+	CHAddr      string      `json:"chaddr"`     // Client's hardware address
+	HostName    string      `json:"hostname"`   // Hostname of the user of the lease
+	ExpiratesAt metav1.Time `json:"expires-at"` // When the lease expires
 }
 
 // GetMetadata is required to implement k8s.Resource
@@ -31,20 +36,20 @@ func (l *Lease) GetMetadata() *metav1.ObjectMeta {
 }
 
 func (l Lease) GetIP() string {
-	return l.IP
+	return l.Spec.IP
 }
 
 func (l Lease) GetCHAddr() string {
-	return l.CHAddr
+	return l.Spec.CHAddr
 }
 
 func (l Lease) GetHostName() string {
-	return l.HostName
+	return l.Spec.HostName
 }
 
 // GetExpiresAt returns the expiration time of the lease
 func (l Lease) GetExpiresAt() time.Time {
-	return time.Unix(l.ExpiratesAt, 0)
+	return time.Unix(l.Spec.ExpiratesAt.GetSeconds(), int64(l.Spec.ExpiratesAt.GetNanos()))
 }
 
 // IsExpired returns true when the lease is expired,

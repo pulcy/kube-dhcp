@@ -75,7 +75,7 @@ spec:
       containers:
       - name: server
         imagePullPolicy: IfNotPresent
-        image: pulcy/kube-dhcp-arm64@sha256:dd2a108213090986c4f2d5c23fcd4dc5d81e1c1538d21ffe3b2ad103d10be056
+        image: pulcy/kube-dhcp-arm64@sha256:e5581b1998892c36c3295e9dbf8eecc92187f5549f1a94b3b6b7b231dd66a8fc
         env:
         - name: METADATA_NAMESPACE
           valueFrom:

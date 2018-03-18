@@ -2,19 +2,25 @@ package registry
 
 import (
 	"context"
-	"crypto/sha1"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/ericchiang/k8s"
 	metav1 "github.com/ericchiang/k8s/apis/meta/v1"
 
 	"github.com/pulcy/kube-dhcp/pkg/service"
+	"github.com/pulcy/kube-dhcp/pkg/util"
 )
 
 type kubeLeaseRegistry struct {
 	cli *k8s.Client
 }
+
+var (
+	ip2NameReplacer     = strings.NewReplacer(".", "-", ":", "-")
+	chAddr2NameReplacer = strings.NewReplacer(":", "")
+)
 
 const (
 	labelIP     = "dhcp.pulcy.com/ip"
@@ -32,7 +38,7 @@ func NewKubeLeaseRegistry(cli *k8s.Client) service.LeaseRegistry {
 // Get the lease for the given IP
 func (r *kubeLeaseRegistry) GetByIP(ctx context.Context, ip string) (service.Lease, error) {
 	sel := new(k8s.LabelSelector)
-	sel.Eq(labelIP, ip)
+	sel.Eq(labelIP, ip2Name(ip))
 
 	var leases LeaseList
 	if err := r.cli.List(ctx, k8s.AllNamespaces, &leases, sel.Selector()); err != nil {
@@ -47,7 +53,7 @@ func (r *kubeLeaseRegistry) GetByIP(ctx context.Context, ip string) (service.Lea
 // Get all the leases for the given hardware address
 func (r *kubeLeaseRegistry) ListByCHAddr(ctx context.Context, chAddr string) ([]service.Lease, error) {
 	sel := new(k8s.LabelSelector)
-	sel.Eq(labelCHAddr, chAddr)
+	sel.Eq(labelCHAddr, chAddr2Name(chAddr))
 
 	var leases LeaseList
 	if err := r.cli.List(ctx, k8s.AllNamespaces, &leases, sel.Selector()); err != nil {
@@ -64,7 +70,7 @@ func (r *kubeLeaseRegistry) ListByCHAddr(ctx context.Context, chAddr string) ([]
 // Remove the given lease
 func (r *kubeLeaseRegistry) Remove(ctx context.Context, l service.Lease) error {
 	lease := l.(Lease)
-	if err := r.cli.Delete(ctx, &lease); err != nil {
+	if err := r.cli.Delete(ctx, &lease); err != nil && !util.IsK8sNotFound(err) {
 		return maskAny(err)
 	}
 	return nil
@@ -74,31 +80,64 @@ func (r *kubeLeaseRegistry) Remove(ctx context.Context, l service.Lease) error {
 func (r *kubeLeaseRegistry) Create(ctx context.Context, ip, chAddr, hostname string, ttl time.Duration) (service.Lease, error) {
 	t := time.Now().Add(ttl)
 	seconds := t.Unix()
-	//nanos := int32(t.UnixNano())
-	name := fmt.Sprintf("lease-%0x", sha1.Sum([]byte(fmt.Sprintf("%s-%s", ip, chAddr))))
+	nanos := int32(t.UnixNano())
+	name := fmt.Sprintf("lease-%s", ip2Name(ip))
 	l := Lease{
 		Kind:       leaseKind,
-		ApiVersion: apiGroup + "/" + apiVersion,
+		APIVersion: apiGroup + "/" + apiVersion,
 		Metadata: &metav1.ObjectMeta{
 			Name:      k8s.String(name),
-			Namespace: k8s.String(""),
+			Namespace: k8s.String(k8s.AllNamespaces),
 			Labels: map[string]string{
-				labelIP:     ip,
-				labelCHAddr: chAddr,
+				labelIP:     ip2Name(ip),
+				labelCHAddr: chAddr2Name(chAddr),
 			},
 		},
-		IP:          ip,
-		CHAddr:      chAddr,
-		ExpiratesAt: seconds,
-		/* metav1.Time{
-			Seconds: &seconds,
-			Nanos:   &nanos,
-		},*/
-		HostName: hostname,
+		Spec: LeaseSpec{
+			IP:     ip,
+			CHAddr: chAddr,
+			ExpiratesAt: metav1.Time{
+				Seconds: &seconds,
+				Nanos:   &nanos,
+			},
+			HostName: hostname,
+		},
 	}
 
-	if err := r.cli.Create(ctx, &l); err != nil {
-		return nil, maskAny(err)
+	err := r.cli.Create(ctx, &l)
+	if err == nil {
+		// OK
+		return l, nil
 	}
-	return l, nil
+	if util.IsK8sAlreadyExists(err) {
+		// Lease resource exists, we must update it
+		var current Lease
+		if err = r.cli.Get(ctx, l.Metadata.GetNamespace(), l.Metadata.GetName(), &current); err == nil {
+			// Now update
+			current.Spec = l.Spec
+			md := current.GetMetadata()
+			if md.Labels == nil {
+				md.Labels = make(map[string]string)
+			}
+			for k, v := range l.Metadata.Labels {
+				md.Labels[k] = v
+			}
+			err := r.cli.Update(ctx, &current)
+			if err == nil {
+				return &current, nil
+			}
+			return nil, maskAny(err)
+		}
+	}
+	return nil, maskAny(err)
+}
+
+// ip2Name converts the given IP address to a valid k8s name.
+func ip2Name(ip string) string {
+	return ip2NameReplacer.Replace(ip)
+}
+
+// chAddr2Name converts the given hardware address to a valid k8s name.
+func chAddr2Name(chAddr string) string {
+	return chAddr2NameReplacer.Replace(chAddr)
 }
